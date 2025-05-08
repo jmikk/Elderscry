@@ -38,8 +38,8 @@ COMMON_FILTERS = {
     "Embassy established": r"\bEmbassy established between\b",
     "Banjects": r"\bwas ejected and banned from\b",
     "Ejections": r"\bwas ejected from\b",
-    "Baning (Not currently supported)": r"\bbanned .*? from the region\b",
-    "Unbanning (Not currently supported)": r"\bremoved .*? from the regional ban list\b",
+    "Baning": r"\bbanned .*? from the region\b",
+    "Unbanning": r"\bremoved .*? from the regional ban list\b",
     "RO Rename": r"\brenamed the office held\b",
     "RO power change": r"\bgranted (.+?) authority to .*? as .*?\b",
     "World Factbook Update": r"\bupdated the World Factbook entry\b",
@@ -61,6 +61,21 @@ COMMON_FILTERS = {
     "Map Updated": r"\bupdated a map to a map version\b",
     "Map Endorsed": r"\bendorsed a map\b",
     "Map Endorsement Removed": r"\bremoved its endorsement from a map\b",
+    "Poll Created": r"\bcreated a new poll in\b",
+    "WA Vote Cast": r"\bvoted (for|against) the World Assembly Resolution\b",
+    "Census Rank Achieved": r"\bwas ranked in the Top \d+% of the world for\b",
+    "WA Proposal Approved": r"\bapproved the World Assembly proposal\b",
+    "Endorsement Given": r"\bendorsed @@.*?@@",
+    "WA Applied": r"\bapplied to join the World Assembly\b",
+    "WA Admitted": r"\bwas admitted to the World Assembly\b",
+    "WA Resigned": r"\bresigned from the World Assembly\b",
+    "Delegate Changed": r"\bbecame WA Delegate of\b",
+    "Delegate Seized": r"\bseized the position of .*? WA Delegate from\b",
+    "Delegate Lost": r"\blost WA Delegate status in\b",
+    "Endorsement Withdrawn": r"\bwithdrew (?:its|their|his|her) endorsement from\b",
+    "Refoundings": r"\bwas refounded in\b",
+    "Custom Banner Created": r"\bcreated a custom banner\b",
+    "Region Password Removed": r"\bremoved regional password protection from\b",
 }
 
 
@@ -147,6 +162,7 @@ class Elderscry:
             "RO Actions": ttk.Frame(notebook),
             "Nation Changes": ttk.Frame(notebook),
             "Maps": ttk.Frame(notebook),
+            "WA & Polls": ttk.Frame(notebook),
             "Miscellaneous": ttk.Frame(notebook),
         }
 
@@ -210,7 +226,7 @@ class Elderscry:
                 "Changed Regional Banner",
                 "Changed Regional Flag",
                 "Region Passworded",
-                "Region Founded",
+                "Region Password Removed" "Region Founded",
             ]:
                 parent = tabs["Regional Changes"]
             elif name in [
@@ -237,6 +253,21 @@ class Elderscry:
                 parent = tabs["Nation Changes"]
             elif name.startswith("Map"):
                 parent = tabs["Maps"]
+            elif name in [
+                "Poll Created",
+                "WA Vote Cast",
+                "Census Rank Achieved",
+                "WA Proposal Approved",
+                "Endorsement Given",
+                "Endorsement Withdrawn",
+                "WA Applied",
+                "WA Admitted",
+                "WA Resigned",
+                "Delegate Changed",
+                "Delegate Seized",
+                "Delegate Lost",
+            ]:
+                parent = tabs["WA & Polls"]
             else:
                 parent = tabs["Miscellaneous"]
 
