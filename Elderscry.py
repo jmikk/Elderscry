@@ -19,7 +19,7 @@ COMMON_FILTERS = {
     "RMB Posts": r"\bregional message board\b",
     "Embassy Activity": r"\bembassy\b",
     "Ejections": r"\bejected\b",
-    "Ceased to Exist": r"\bcease to exist\b",
+    "Ceased to Exist": r"\bceased? to exist\b",
     "Delegate Votes/Resolutions": r"\bresolution\b",
     "Moves": r"\brelocated from\b",
     "Influence": r"\binfluence in\b",
@@ -76,6 +76,7 @@ COMMON_FILTERS = {
     "Refoundings": r"\bwas refounded in\b",
     "Custom Banner Created": r"\bcreated a custom banner\b",
     "Region Password Removed": r"\bremoved regional password protection from\b",
+    "Region Updated": r"\b@@ updated\.\b",
 }
 
 
@@ -94,6 +95,7 @@ class Elderscry:
             self.log("Webhook validated.")
         else:
             self.log("WARNING: Webhook invalid!")
+        self.start_listener()
 
     def hyperlink(self, text):
         # Hyperlink nations
@@ -183,7 +185,7 @@ class Elderscry:
         )
 
         ttk.Label(info_frame, text="User Agent:").grid(row=2, column=0)
-        self.user_agent_var = tk.StringVar(value="9005")
+        self.user_agent_var = tk.StringVar(value="")
         ttk.Entry(info_frame, textvariable=self.user_agent_var).grid(row=2, column=1)
 
         self.dispatch_var = tk.BooleanVar(value=self.config["dispatch"]["enabled"])
@@ -353,14 +355,20 @@ class Elderscry:
                 "webhook": "",
                 "dispatch": {"enabled": True, "color": 7506394, "role_id": None},
                 "filters": [],
+                "user_agent": "",
             }
             with open(CONFIG_FILE, "w") as f:
                 json.dump(default, f, indent=4)
+
+                # Add missing fields if they don't exist in old config
+            if "user_agent" not in config:
+                config["user_agent"] = ""
             return default
 
     def save_config(self):
         self.config["region"] = self.region_var.get().strip().lower().replace(" ", "_")
         self.config["webhook"] = self.webhook_var.get().strip()
+        self.config["user_agent"] = self.user_agent_var.get().strip()  # NEW
         self.config["dispatch"]["enabled"] = self.dispatch_var.get()
         self.config["dispatch"]["color"] = self.dispatch_color
         self.config["dispatch"]["role_id"] = self.dispatch_role.get() or None
@@ -458,8 +466,13 @@ class Elderscry:
         self.log("Stopping listener...")
 
     def listener(self):
-        url = f"https://www.nationstates.net/api/region:{self.config['region']}"
-        headers = {"User-Agent": "9005"}
+        regions = self.config["region"].replace(",", "+region:")
+        self.log(type(self.config["region"]))
+        self.log(self.config["region"])
+
+        url = f"https://www.nationstates.net/api/region:{regions}"
+        self.log(url)
+        headers = {"User-Agent": self.config["user_agent"]}
 
         while not self.stop_event.is_set():
             try:
@@ -476,7 +489,7 @@ class Elderscry:
                         r'<img src="([^"]+?)" class="miniflag"', html
                     )
                     flag_url = (
-                        f"https://www.nationstates.net{flag_match.group(1).replace('.svg','.png')}"
+                        f"https://www.nationstates.net{flag_match.group(1).replace('.svg','.png').replace('t2.png','.png')}"
                         if flag_match
                         else None
                     )
@@ -490,7 +503,9 @@ class Elderscry:
                         region = rmb_match.group(1)
                         post_id = rmb_match.group(2)
                         url_rmb = f"https://www.nationstates.net/cgi-bin/api.cgi?region={region}&q=messages&fromid={post_id}"
-                        r = requests.get(url_rmb, headers={"User-Agent": "9005"})
+                        r = requests.get(
+                            url_rmb, headers={"User-Agent": self.config["user_agent"]}
+                        )
                         xml_text = r.text
 
                         root = ET.fromstring(xml_text)
@@ -678,7 +693,7 @@ class Elderscry:
         html = data.get("htmlStr", "")
         flag_match = re.search(r'<img src="([^"]+)" class="miniflag"', html)
         flag_url = (
-            f"https://www.nationstates.net{flag_match.group(1).replace('.svg','.png')}"
+            f"https://www.nationstates.net{flag_match.group(1).replace('.svg','.png').replace('t2.png','.png')}"
             if flag_match
             else None
         )
