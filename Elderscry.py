@@ -345,25 +345,56 @@ class Elderscry:
         self.log_text.pack(fill="both", expand=True)
         self.refresh_log()
 
+    def is_wa_member(self, nation_name: str) -> bool:
+        """
+        Returns True if the nation is a WA member, False otherwise.
+        Tries both <WA> and <UNSTATUS> shards for robustness.
+        """
+        try:
+            # Nation names in API URLs should be snake_case
+            api_nation = nation_name.strip().lower().replace(" ", "_")
+            url = f"https://www.nationstates.net/cgi-bin/api.cgi?nation={api_nation}&q=wa+unstatus"
+            r = requests.get(url, headers={"User-Agent": self.config.get("user_agent", "9003")}, timeout=30)
+            r.raise_for_status()
+            root = ET.fromstring(r.text)
+    
+            wa_val = root.findtext(".//WA")
+            if wa_val is not None:
+                return wa_val.strip() == "1"
+    
+            unstatus = root.findtext(".//UNSTATUS") or ""
+            return "member" in unstatus.lower()
+        except Exception as e:
+            self.log(f"WA check failed for {nation_name}: {e}")
+            return False
+
+
     def load_config(self):
+        default = {
+            "region": "testregion",
+            "webhook": "",
+            "dispatch": {"enabled": True, "color": 7506394, "role_id": None},
+            "filters": [],
+            "user_agent": "",
+        }
+    
         if os.path.exists(CONFIG_FILE):
             with open(CONFIG_FILE) as f:
-                return json.load(f)
+                cfg = json.load(f)
+            # backfill any missing keys
+            if "dispatch" not in cfg:
+                cfg["dispatch"] = default["dispatch"].copy()
+            else:
+                for k, v in default["dispatch"].items():
+                    cfg["dispatch"].setdefault(k, v)
+            for k, v in default.items():
+                cfg.setdefault(k, v)
+            return cfg
         else:
-            default = {
-                "region": "testregion",
-                "webhook": "",
-                "dispatch": {"enabled": True, "color": 7506394, "role_id": None},
-                "filters": [],
-                "user_agent": "",
-            }
             with open(CONFIG_FILE, "w") as f:
                 json.dump(default, f, indent=4)
-
-                # Add missing fields if they don't exist in old config
-            if "user_agent" not in config:
-                config["user_agent"] = ""
             return default
+
 
     def save_config(self):
         self.config["region"] = self.region_var.get().strip().lower().replace(" ", "_")
@@ -648,13 +679,26 @@ class Elderscry:
 
                         continue  # skip normal processing for dispatches
 
-                    # ----- NORMAL EVENT CHECK -----
+                   # ----- NORMAL EVENT CHECK -----
                     should_send, color, role_id, event_type = self.event_matches(data)
                     if should_send:
                         self.log(f"Matched ({event_type}): {data['str']}")
-                        self.send_embed(data, color, role_id, event_type)
+                    
+                        wa_member_flag = None
+                        # If this is a "Moves" event, extract the nation and check WA status
+                        # Matches entries like: @@Nation Name@@ relocated from %%Old%% to %%New%%.
+                        if re.search(r"\brelocated from\b", data.get("str", ""), re.IGNORECASE):
+                            nation_match = re.search(r"@@(.*?)@@", data.get("str", ""))
+                            if nation_match:
+                                nation_name = nation_match.group(1)
+                                wa_member_flag = self.is_wa_member(nation_name)
+                            else:
+                                self.log("Could not extract nation name for WA check on move event.")
+                    
+                        self.send_embed(data, color, role_id, event_type, wa_member=wa_member_flag)
                     else:
                         self.log(f"Ignored: {data['str']}")
+
             except Exception as e:
                 self.log(f"Connection error: {e}. Retrying in 10s.")
                 time.sleep(10)
@@ -687,34 +731,40 @@ class Elderscry:
             title = "NationStates Event"
             description = event_str
         return title, description
-
-    def send_embed(self, data, color, role_id, event_type):
+    
+    def send_embed(self, data, color, role_id, event_type, wa_member=None):
         title, description = self.smart_parse_event(data.get("str", "No description."))
         html = data.get("htmlStr", "")
         flag_match = re.search(r'<img src="([^"]+)" class="miniflag"', html)
         flag_url = (
             f"https://www.nationstates.net{flag_match.group(1).replace('.svg','.png').replace('t2.png','.png')}"
-            if flag_match
-            else None
+            if flag_match else None
         )
-
-        # Apply hyperlinking to title and description
+    
+        # Apply hyperlinking
         title = self.hyperlink(title)
         description = self.hyperlink(description)
-
+    
         embed = {
             "title": title,
             "description": description,
             "color": color,
             "footer": {"text": f"Event ID: {data.get('id', 'N/A')}"},
             "timestamp": datetime.utcfromtimestamp(data.get("time")).isoformat()
-            if data.get("time")
-            else None,
+                if data.get("time") else None,
+            "fields": []
         }
-
+    
+        if wa_member is not None:
+            embed["fields"].append({
+                "name": "WA Member",
+                "value": "Yes ✅" if wa_member else "No ❌",
+                "inline": True
+            })
+    
         if flag_url:
             embed["thumbnail"] = {"url": flag_url}
-
+    
         mention = f"<@&{role_id}>" if role_id else ""
         payload = {"content": mention, "embeds": [embed]}
         response = requests.post(self.config["webhook"], json=payload)
@@ -722,6 +772,7 @@ class Elderscry:
             self.log(f"Failed to send event: {response.status_code}")
         else:
             self.log(f"Event sent ({event_type})")
+
 
 
 if __name__ == "__main__":
